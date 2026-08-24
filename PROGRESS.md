@@ -39,12 +39,49 @@ All progress tracked with timestamps. Updated as each phase is completed.
 ---
 
 ## Phase 2: Regression
-*(upcoming)*
+
+### [2026-08-24 13:41 IST] — Linear Regression Completed (`scripts/03_regression.py`)
+- Target: `review_ratio` (continuous, 0–1)
+- Features: 22 columns (Price, owners, playtime, achievements, Metacritic, genres, etc.)
+- StandardScaler applied, 80/20 train-test split (66,364 / 16,592)
+- **Results:**
+  - Training R²: 0.0402 | Testing R²: 0.0418
+  - Training MAE: 0.1786 | Testing MAE: 0.1798
+  - Training MSE: 0.0545 | Testing MSE: 0.0551
+- **Key finding:** R² is very low (~4%) — metadata alone is a weak predictor of review ratio. This is expected and makes a good discussion point.
+- **Top positive coefficients:** Average playtime, Metacritic score, Indie genre
+- **Top negative coefficients:** is_free (-0.071), Price (-0.060), Median playtime (-0.028)
+- **Interesting insight:** Both `is_free` AND `Price` have negative coefficients — meaning neither extreme (free nor expensive) helps review ratio
+- Generated 3 charts:
+  - `06_regression_actual_vs_predicted.png`
+  - `07_regression_coefficients.png`
+  - `08_regression_residuals.png`
 
 ---
 
-## Phase 3: Classification (KNN, NB, SVM, Decision Tree, Random Forest, Neural Net)
-*(upcoming)*
+## Phase 3: Classification (KNN, Decision Tree, Random Forest)
+
+### [2026-08-24 13:46 IST] — Classification Completed (`scripts/04_classification.py`)
+- Target: binary `success` label (13% positive, 87% negative — imbalanced)
+- Features: 22 columns, StandardScaler applied, 80/20 stratified split
+- **Results:**
+
+| Model | Accuracy | Precision | Recall | F1 |
+|---|---|---|---|---|
+| KNN (k=5) | 87.75% | 57.43% | 23.92% | 33.77% |
+| Decision Tree (depth=5) | 91.92% | 62.84% | 93.21% | 75.07% |
+| Random Forest (200 trees) | 92.58% | 70.11% | 75.25% | 72.59% |
+
+- **Best by F1:** Decision Tree (0.7507) — high recall catches most successful games
+- **Best by Precision:** Random Forest (70.11%) — fewer false positives
+- **KNN struggled** with recall (23.9%) — class imbalance hurts KNN the most
+- **Decision Tree top feature:** `owners_numeric` (96% importance — dominates!)
+- **Random Forest top features:** owners_numeric (39%), Recommendations (13%), playtime (7.7%)
+- Random Forest: accuracy improves from 91.76% (10 trees) → 92.58% (200 trees)
+- Generated 3 charts:
+  - `09_decision_tree.png` — tree visualization
+  - `10_rf_trees_vs_performance.png` — accuracy vs n_estimators
+  - `11_rf_feature_importances.png` — RF feature importances
 
 ---
 
