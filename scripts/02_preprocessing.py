@@ -5,131 +5,98 @@
 
 import pandas as pd
 import numpy as np
-import sys
+import os
 
-# Fix Windows console encoding
-sys.stdout.reconfigure(encoding='utf-8')
-
-# ============================================================
-# 1. LOAD RAW DATA
-# ============================================================
+# ------------------------------------------------------------
+# 1. Load Raw Dataset
+# ------------------------------------------------------------
+print("Loading raw dataset...")
 df = pd.read_csv('../data/raw/games.csv')
 print("Original shape:", df.shape)
 
-# ============================================================
-# 2. DROP USELESS COLUMNS
-# ============================================================
+# ------------------------------------------------------------
+# 2. Drop Unnecessary Columns (URLs, descriptions, image links)
+# ------------------------------------------------------------
 drop_cols = [
     'About the game', 'Reviews', 'Header image', 'Website',
     'Support url', 'Support email', 'Metacritic url',
     'Screenshots', 'Movies', 'Notes', 'Score rank',
     'Supported languages', 'Full audio languages'
 ]
-df.drop(columns=drop_cols, inplace=True, errors='ignore')
-print("After dropping useless columns:", df.shape)
+df = df.drop(columns=drop_cols, errors='ignore')
+print("Shape after dropping text/URL columns:", df.shape)
 
-# ============================================================
-# 3. ESTIMATED OWNERS — already numeric in this dataset version
-# ============================================================
-# Rename for clarity
-df.rename(columns={'Estimated owners': 'owners_numeric'}, inplace=True)
-print("\nOwners sample:")
-print(df['owners_numeric'].describe())
+# ------------------------------------------------------------
+# 3. Rename Estimated Owners Column
+# ------------------------------------------------------------
+df = df.rename(columns={'Estimated owners': 'owners_numeric'})
 
-# ============================================================
-# 4. DROP GAMES WITH ZERO REVIEWS (can't compute target)
-# ============================================================
+# ------------------------------------------------------------
+# 4. Remove Games with Zero Reviews
+# ------------------------------------------------------------
 df['total_reviews'] = df['Positive'] + df['Negative']
-before = len(df)
 df = df[df['total_reviews'] > 0].copy()
-print(f"\nDropped {before - len(df)} games with zero reviews")
-print("Remaining:", len(df), "games")
+print("Shape after dropping games with 0 reviews:", df.shape)
 
-# ============================================================
-# 5. COMPUTE REVIEW RATIO
-# ============================================================
+# ------------------------------------------------------------
+# 5. Create Target & Feature Columns
+# ------------------------------------------------------------
+# Calculate positive review ratio (0 to 1)
 df['review_ratio'] = df['Positive'] / df['total_reviews']
-print("\nReview ratio stats:")
-print(df['review_ratio'].describe())
 
-# ============================================================
-# 6. ADD IS_FREE FLAG
-# ============================================================
+# Binary flag for free games
 df['is_free'] = (df['Price'] == 0).astype(int)
-print("\nFree vs Paid count:")
-print(df['is_free'].value_counts())
 
-# ============================================================
-# 7. DEFINE SUCCESS LABEL
-# ============================================================
-# Success = above-median review_ratio AND above-median owners
+# Define 'success' label: above-median review ratio AND above-median owners
 median_ratio = df['review_ratio'].median()
 median_owners = df['owners_numeric'].median()
 
-print(f"\nMedian review ratio: {median_ratio:.4f}")
-print(f"Median owners: {median_owners:.0f}")
+print("\nMedian Review Ratio:", median_ratio)
+print("Median Owners:", median_owners)
 
-df['success'] = ((df['review_ratio'] > median_ratio) &
+df['success'] = ((df['review_ratio'] > median_ratio) & 
                  (df['owners_numeric'] > median_owners)).astype(int)
 
-# ============================================================
-# 8. CHECK CLASS BALANCE
-# ============================================================
-print("\n" + "=" * 50)
-print("CLASS BALANCE")
-print("=" * 50)
+print("\nClass distribution for 'success':")
 print(df['success'].value_counts())
-print(f"\nSuccess rate: {df['success'].mean():.2%}")
+print("Success Percentage: {:.2f}%".format(df['success'].mean() * 100))
 
-# ============================================================
-# 9. MULTI-HOT ENCODE TOP 15 GENRES
-# ============================================================
-# Split comma-separated genres and find top 15
+# ------------------------------------------------------------
+# 6. One-Hot Encode Top 15 Genres
+# ------------------------------------------------------------
+# Find top 15 genres
 all_genres = df['Genres'].dropna().str.split(',')
-genre_list = [g.strip() for genres in all_genres for g in genres]
-top_genres = pd.Series(genre_list).value_counts().head(15).index.tolist()
+genre_list = []
+for genres in all_genres:
+    for g in genres:
+        genre_list.append(g.strip())
 
+top_genres = pd.Series(genre_list).value_counts().head(15).index.tolist()
 print("\nTop 15 Genres:", top_genres)
 
-# Create one-hot columns for each top genre
-for genre in top_genres:
-    col_name = 'genre_' + genre.replace(' ', '_').lower()
-    df[col_name] = df['Genres'].fillna('').apply(
-        lambda x, g=genre: 1 if g in [item.strip() for item in x.split(',')] else 0
-    )
+# Create 0/1 column for each top genre
+for g in top_genres:
+    col_name = 'genre_' + g.replace(' ', '_').lower()
+    df[col_name] = df['Genres'].fillna('').apply(lambda x: 1 if g in [item.strip() for item in x.split(',')] else 0)
 
-# ============================================================
-# 10. HANDLE REMAINING MISSING VALUES
-# ============================================================
-# Fill missing numeric columns with 0
-fill_zero_cols = ['Price', 'Achievements', 'Average playtime forever',
-                  'Median playtime forever', 'Peak CCU',
-                  'Metacritic score', 'Recommendations',
-                  'Average playtime two weeks', 'Median playtime two weeks']
-for col in fill_zero_cols:
+# ------------------------------------------------------------
+# 7. Fill Missing Values for Numeric Columns
+# ------------------------------------------------------------
+numeric_cols = [
+    'Price', 'Achievements', 'Average playtime forever',
+    'Median playtime forever', 'Peak CCU', 'Metacritic score',
+    'Recommendations'
+]
+
+for col in numeric_cols:
     if col in df.columns:
         df[col] = df[col].fillna(0)
 
-print("\nRemaining missing values:")
-remaining_missing = df.isnull().sum()
-remaining_missing = remaining_missing[remaining_missing > 0]
-print(remaining_missing if len(remaining_missing) > 0 else "None!")
-
-# ============================================================
-# 11. FINAL DATASET OVERVIEW
-# ============================================================
-print("\n" + "=" * 50)
-print("FINAL PROCESSED DATASET")
-print("=" * 50)
-print("Shape:", df.shape)
-print("\nColumns:")
-print(list(df.columns))
-print("\nFirst 5 rows (key columns):")
-print(df[['Name', 'Price', 'owners_numeric', 'review_ratio', 'is_free', 'success']].head(10))
-
-# ============================================================
-# 12. SAVE PROCESSED DATA
-# ============================================================
-df.to_csv('../data/processed/steam_cleaned.csv', index=False)
-print("\nSaved to data/processed/steam_cleaned.csv")
-print("PREPROCESSING COMPLETE")
+# ------------------------------------------------------------
+# 8. Save Processed Dataset
+# ------------------------------------------------------------
+os.makedirs('../data/processed', exist_ok=True)
+output_path = '../data/processed/steam_cleaned.csv'
+df.to_csv(output_path, index=False)
+print("\nCleaned dataset saved successfully to:", output_path)
+print("Final processed shape:", df.shape)
